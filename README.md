@@ -20,7 +20,9 @@ Example
 -------
 ```php
 <?php
-use \Firebase\JWT\JWT;
+require __DIR__ . '/../vendor/autoload.php';
+
+use \Firebase\JWT\{JWT as JWT};
 
 $key = "example_key";
 $token = array(

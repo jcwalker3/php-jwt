@@ -21,13 +21,13 @@ use \DateTime;
  */
 class JWT
 {
-
+    private static $instance;
     /**
      * When checking nbf, iat or expiration times,
      * we want to provide some extra leeway time to
      * account for clock skew.
      */
-    public static $leeway = 0;
+    public $leeway = 0;
 
     /**
      * Allow the current timestamp to be specified.
@@ -35,9 +35,9 @@ class JWT
      *
      * Will default to PHP time() value if null.
      */
-    public static $timestamp = null;
+    public $timestamp = null;
 
-    public static $supported_algs = array(
+    public $supported_algs = array(
         'HS256' => array('hash_hmac', 'SHA256'),
         'HS512' => array('hash_hmac', 'SHA512'),
         'HS384' => array('hash_hmac', 'SHA384'),
@@ -46,6 +46,13 @@ class JWT
         'RS512' => array('openssl', 'SHA512'),
     );
 
+    public static function getInstance() {
+        if (self::$instance === null) {
+            self::$instance = new JWT();
+        }
+        return self::$instance;
+    }
+    
     /**
      * Decodes a JWT string into a PHP object.
      *
@@ -66,9 +73,9 @@ class JWT
      * @uses jsonDecode
      * @uses urlsafeB64Decode
      */
-    public static function decode($jwt, $key, array $allowed_algs = array())
+    public function decode($jwt, $key, array $allowed_algs = array())
     {
-        $timestamp = is_null(static::$timestamp) ? time() : static::$timestamp;
+        $timestamp = is_null($this->timestamp) ? time() : $this->timestamp;
 
         if (empty($key)) {
             throw new InvalidArgumentException('Key may not be empty');
@@ -90,7 +97,7 @@ class JWT
         if (empty($header->alg)) {
             throw new UnexpectedValueException('Empty algorithm');
         }
-        if (empty(static::$supported_algs[$header->alg])) {
+        if (empty($this->supported_algs[$header->alg])) {
             throw new UnexpectedValueException('Algorithm not supported');
         }
         if (!in_array($header->alg, $allowed_algs)) {
@@ -114,7 +121,7 @@ class JWT
 
         // Check if the nbf if it is defined. This is the time that the
         // token can actually be used. If it's not yet that time, abort.
-        if (isset($payload->nbf) && $payload->nbf > ($timestamp + static::$leeway)) {
+        if (isset($payload->nbf) && $payload->nbf > ($timestamp + $this->leeway)) {
             throw new BeforeValidException(
                 'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->nbf)
             );
@@ -123,14 +130,14 @@ class JWT
         // Check that this token has been created before 'now'. This prevents
         // using tokens that have been created for later use (and haven't
         // correctly used the nbf claim).
-        if (isset($payload->iat) && $payload->iat > ($timestamp + static::$leeway)) {
+        if (isset($payload->iat) && $payload->iat > ($timestamp + $this->leeway)) {
             throw new BeforeValidException(
                 'Cannot handle token prior to ' . date(DateTime::ISO8601, $payload->iat)
             );
         }
 
         // Check if this token has expired.
-        if (isset($payload->exp) && ($timestamp - static::$leeway) >= $payload->exp) {
+        if (isset($payload->exp) && ($timestamp - $this->leeway) >= $payload->exp) {
             throw new ExpiredException('Expired token');
         }
 
@@ -153,7 +160,7 @@ class JWT
      * @uses jsonEncode
      * @uses urlsafeB64Encode
      */
-    public static function encode($payload, $key, $alg = 'HS256', $keyId = null, $head = null)
+    public function encode($payload, $key, $alg = 'HS256', $keyId = null, $head = null)
     {
         $header = array('typ' => 'JWT', 'alg' => $alg);
         if ($keyId !== null) {
@@ -185,12 +192,12 @@ class JWT
      *
      * @throws DomainException Unsupported algorithm was specified
      */
-    public static function sign($msg, $key, $alg = 'HS256')
+    public function sign($msg, $key, $alg = 'HS256')
     {
-        if (empty(static::$supported_algs[$alg])) {
+        if (empty($this->supported_algs[$alg])) {
             throw new DomainException('Algorithm not supported');
         }
-        list($function, $algorithm) = static::$supported_algs[$alg];
+        list($function, $algorithm) = $this->supported_algs[$alg];
         switch($function) {
             case 'hash_hmac':
                 return hash_hmac($algorithm, $msg, $key, true);
@@ -218,13 +225,13 @@ class JWT
      *
      * @throws DomainException Invalid Algorithm or OpenSSL failure
      */
-    private static function verify($msg, $signature, $key, $alg)
+    private function verify($msg, $signature, $key, $alg)
     {
-        if (empty(static::$supported_algs[$alg])) {
+        if (empty($this->supported_algs[$alg])) {
             throw new DomainException('Algorithm not supported');
         }
 
-        list($function, $algorithm) = static::$supported_algs[$alg];
+        list($function, $algorithm) = $this->supported_algs[$alg];
         switch($function) {
             case 'openssl':
                 $success = openssl_verify($msg, $signature, $key, $algorithm);
@@ -264,7 +271,7 @@ class JWT
      *
      * @throws DomainException Provided string was invalid JSON
      */
-    public static function jsonDecode($input)
+    public function jsonDecode($input)
     {
         if (version_compare(PHP_VERSION, '5.4.0', '>=') && !(defined('JSON_C_VERSION') && PHP_INT_SIZE > 4)) {
             /** In PHP >=5.4.0, json_decode() accepts an options parameter, that allows you
@@ -299,7 +306,7 @@ class JWT
      *
      * @throws DomainException Provided object could not be encoded to valid JSON
      */
-    public static function jsonEncode($input)
+    public function jsonEncode($input)
     {
         $json = json_encode($input);
         if (function_exists('json_last_error') && $errno = json_last_error()) {
@@ -317,7 +324,7 @@ class JWT
      *
      * @return string A decoded string
      */
-    public static function urlsafeB64Decode($input)
+    public function urlsafeB64Decode($input)
     {
         $remainder = strlen($input) % 4;
         if ($remainder) {
@@ -334,7 +341,7 @@ class JWT
      *
      * @return string The base64 encode of what you passed in
      */
-    public static function urlsafeB64Encode($input)
+    public function urlsafeB64Encode($input)
     {
         return str_replace('=', '', strtr(base64_encode($input), '+/', '-_'));
     }
@@ -346,7 +353,7 @@ class JWT
      *
      * @return void
      */
-    private static function handleJsonError($errno)
+    private function handleJsonError($errno)
     {
         $messages = array(
             JSON_ERROR_DEPTH => 'Maximum stack depth exceeded',
@@ -369,7 +376,7 @@ class JWT
      *
      * @return int
      */
-    private static function safeStrlen($str)
+    private function safeStrlen($str)
     {
         if (function_exists('mb_strlen')) {
             return mb_strlen($str, '8bit');
